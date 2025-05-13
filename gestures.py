@@ -29,15 +29,16 @@ tempo_execucao = {
     "volume":0
 
 }
-INTERVALO = 1.5
+INTERVALO = 5.0
 
 # funçao para açoes especificas
 
 def distancia(p1, p2):
     return math.hypot(p2.x - p1.x, p2.y - p1.y)
 
-def abrir_navegador():
+def abrir_navegador(mao):
     print("🟢 Ação: Abrindo navegador...")
+    
     webbrowser.open("https://www.google.com")
 
 def capturar_tela():
@@ -55,14 +56,11 @@ def abrir_linkedin():
 def contar_dedos(mao):
     dedos_levantados = 0
 
-    if mao.landmark[4].x < mao.landmark[3].x:
-        dedos_levantados += 1
     tips = [8, 12, 16, 20]
     for tip in tips:
         if mao.landmark[tip].y < mao.landmark[tip - 2].y:
             dedos_levantados += 1
-    return dedos_levantados
-
+            return dedos_levantados
 # funçao para detectar gestos
  
 def ajustar_volume(mao):
@@ -76,6 +74,24 @@ def ajustar_volume(mao):
     
     print(f"Distância: {dist:.2f} -> Volume: {int(escala * 100)}%")
 
+def classificar_gestos(maos):
+    if len(maos) == 2:
+        return "duas_maos"
+    mao = maos[0]
+    dedos = contar_dedos(mao)
+    polegar = mao.landmark[4]
+    indicador = mao.landmark[8]
+
+    dist = distancia(polegar, indicador)
+    if dedos == 0:
+        return "mao_fechada"
+    elif dedos == 2:
+        return "dois_dedos"
+    elif dist<0.5:
+        return "ajustar_volume"
+    else:
+        return None
+    
 def detectar_gestos():
     global gestures_ativos
     cap = cv2.VideoCapture(0)
@@ -97,29 +113,34 @@ def detectar_gestos():
                 print("Modo ativado" if gestures_ativos else "modo desativado") 
                         
             if results.multi_hand_landmarks and gestures_ativos:
+                gesture = classificar_gestos(results.multi_hand_landmarks)
+                atual = time.time()
+
                 for hand_landmarks in results.multi_hand_landmarks:
                     mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
                     dedos = contar_dedos(hand_landmarks)
-                    atual = time.time()
                     # ativaçao dos comandos
                     # caso gesto ativado tera um intervalo de tempo
 
                     if gestures_ativos:
-                        if dedos == 1 and atual - tempo_execucao["navegador"] > INTERVALO:
+                        if gesture == "mao_fechada" and atual - tempo_execucao["navegador"] > INTERVALO:
                             abrir_navegador()
                             tempo_execucao["navegador"] = atual
 
-                        elif dedos == 2 and atual - tempo_execucao["print"] > INTERVALO:
-                            capturar_tela() 
+
+                        elif gesture == "dois_dedos" and atual - tempo_execucao["print"] > INTERVALO:
+                            capturar_tela()
                             tempo_execucao["print"] = atual
 
-                        elif dedos == 3 and hand_landmarks.landmark[4].y < hand_landmarks.landmark[3].y:
-                            if atual - tempo_execucao["linkedin"] > INTERVALO:
-                                abrir_linkedin()
-                                tempo_execucao["linkedin"] = atual
-                        elif dedos == 0 and atual - tempo_execucao["volume"] > 0.3:
-                            ajustar_volume(hand_landmarks)
+
+                        elif gesture == "duas_maos" and atual - tempo_execucao["linkedin"] > INTERVALO:
+                            abrir_linkedin()
+                            tempo_execucao["linkedin"] = atual
+
+
+                        elif gesture == "ajustar_volume" and atual - tempo_execucao["volume"] > 0.2:
+                            ajustar_volume(results.multi_hand_landmarks[0])
                             tempo_execucao["volume"] = atual
 
             cv2.imshow("Detector de gestos", frame)
